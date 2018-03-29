@@ -11,19 +11,33 @@
  *  Para o código paralelo temos:
  *NThreads|   1    |    2    |    4    |    8    |    16    |
  *	-arq1:| 1385	 |   536	 |   291	 |   333	 |   759		|
- *	-arq2:| 63048	 |  19533	 |  12000	 |  6025	 |   5140		|
+ *	-arq2:| 35032	 |  19533	 |  12000	 |  6025	 |   5140		|
  *	-arq3:| 253050 |  136579 |  73844	 |  44275  |  46572   |
  *	|----------------------------------------------|
  *	|		 | N_Threads|  1  |  2  |  4  |  8  |  16  |
  *	|arq1|Speed Up	|0.84 |2.18 |4.01 |3.51 |1.54  |
  *	|		 |Eficiencia|0.84 |1.09 |1.00 |0.43 |0.09  |
- *	|arq2|Speed Up	|0.52 |1.72 |2.74 |5.77 |6.41  |
- *	|		 |Eficiencia|0.52 |0.86 |0.68 |0.72 |0.40  |
+ *	|arq2|Speed Up	|0.94 |1.72 |2.74 |5.77 |6.41  |
+ *	|		 |Eficiencia|0.94 |0.86 |0.68 |0.72 |0.40  |
  *	|arq3|Speed Up	|1.01 |1.87 |3.46 |5.47 |5.49  |
  *	|		 |Eficiencia|1.01 |0.98 |0.86 |0.68 |0.34  |
  *	|----------------------------------------------|
- * Como podemos ver,
- *
+ * Como podemos ver, ao compararmos um código serial com um paralelo rodando
+ * uma única thread, teremos o código serial mais rápido ou equivalente ao para-
+ * lelo. Isso se deve ao fato de ao rodarmos um programa paralelo existe todo o
+ * gasto para acordar a thread e pará-la, que não acontece em um código serial.
+ * Já com duas threads, podemos ver que há uma melhora de quase 100% em todos os
+ * testes, o que, ao considerar que o processador está executando outros proces-
+ * sos e threads paralelamente ao programa, podemos desconsiderar um certo erro
+ * e assumir um ganho de 2x com eficiencia de quase 100%. O mesmo acontece para
+ * quatro threads que possui seu desempenho quase o dobro de 2 threads, tendo um
+ * rendimento maior que 68% em todos os casos.
+ * No entanto, o paralelismo começa a não ter o mesmo efeito a partir de 8 e 16
+ * threads, onde para o arq1, por ser de tamanho pequeno, o gerencimento de th-
+ * reads já leva mais tempo que o próprio programa e para os tests arq2 e 3, os
+ * tempos começam a se manter estáveis.
+ * Utilizando a lei de Amdahl podemos ver que este código está aproximadamente
+ * 20% paralelizavel.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,6 +91,7 @@ void* Count(void* args) {
 		vet[j] += count;
 		pthread_mutex_unlock(&shared_sum_operation);
 	}
+	return vet;
 }
 
 /** main **/
@@ -117,7 +132,7 @@ int main() {
 
 	min_read = floor(min_read);			// Need this to obtain the same answer as res
 	max_read = ceil(max_read);			// Need this to obtain the same answer as res
-	double constant_multiplier = (n_reads/n_threads);	// Used many times
+	double constant_multiplier = ((double) n_reads/(double) n_threads);	// Used many times
 	h = (max_read - min_read)/n_bins;
 	pthread_arg **args = (pthread_arg**)calloc(n_threads, sizeof(pthread_arg*));
 	for (i = 0; i < n_threads; i++)
@@ -130,8 +145,8 @@ int main() {
 		args[i]->max = max_read;
 		args[i]->min = min_read;
 		args[i]->nbins = n_bins;
-		args[i]->nval_begin = i*constant_multiplier;
-		args[i]->nval_end = (i+1)*constant_multiplier-1;
+		args[i]->nval_begin = ceil(i*constant_multiplier);
+		args[i]->nval_end = ceil((i+1)*constant_multiplier-1);
 		args[i]->val = read_vector;
 		args[i]->vet = bin_vec;
 
@@ -146,7 +161,7 @@ int main() {
 
 
 	// Calculate the durationg based on formula given on exercice
-	double duracao = (
+	unsigned long int duracao = (
 		(end.tv_sec*1000000 + end.tv_usec) -(start.tv_sec*1000000 + start.tv_usec)
 	);
 
@@ -160,7 +175,7 @@ int main() {
 		printf("%d ", bin_vec[i]);
 	}
 	printf("%d\n", bin_vec[n_bins-1]);
-	printf("%.lf\n", duracao);
+	printf("%lu\n", duracao);
 
 	// Free memory
 	for(i = 0; i < n_threads; i++ )
