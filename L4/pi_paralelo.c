@@ -24,16 +24,17 @@ void* Throw_darts(void* args) {
 	long long int end_loop = p_arg->end_loop;
 	long long int *sum_in_circle = p_arg->sum_in_circle;
 
-	printf("hi, im here %u %lld\n", thread_n, darts_in_circle);
-
 	double x, y;
 	long long int i, darts_in_circle = 0;
+	unsigned int seed1 = (thread_n+50)*rand();
+	unsigned int seed2 = (thread_n+100)*rand();
 
 	for (i = begin_loop; i < end_loop; i++){
-		x = rand_r(&thread_n);
-		y = rand_r(&thread_n);
-		if (x*x + y*y < 1.0) {
-			darts_in_circle++;
+		x = -1 + 2*(double)rand_r(&seed1)/(double)((unsigned)RAND_MAX + 1);
+		y = -1 + 2*(double)rand_r(&seed2)/(double)((unsigned)RAND_MAX + 1);
+
+		if ((x*x + y*y) < 1.0) {
+			darts_in_circle += 1;
 		}
 	}
 
@@ -48,7 +49,7 @@ void* Throw_darts(void* args) {
 int main() {
 	unsigned int n_threads, n_darts, i;
 	pthread_t* thread_handlers;
-	long long int sum = 0;
+	long long int *sum = (long long int*)calloc(1, sizeof(long long int));
 	struct timeval start, end;
 
 	scanf("%u", &n_threads);
@@ -66,8 +67,8 @@ int main() {
 	for (i = 0; i < n_threads; i++) {
 		args[i]->thread_n = i;
 		args[i]->begin_loop = i*(n_darts/n_threads);
-		args[i]->end_loop = (i+1)*(n_darts/n_threads)-1;
-		args[i]->sum_in_circle = &sum;
+		args[i]->end_loop = (i+1)*(n_darts/n_threads);
+		args[i]->sum_in_circle = sum;
 		pthread_create(&thread_handlers[i], NULL, Throw_darts, args[i]);
 	}
 
@@ -83,7 +84,7 @@ int main() {
 		(end.tv_sec*1000000 + end.tv_usec) -(start.tv_sec*1000000 + start.tv_usec)
 	);
 
-	printf("%lf\n", 4.0*(double)n_darts/(double)sum);
+	printf("%lf\n", 4.0*(double)*sum/(double)n_darts);
 	printf("%lu\n", duracao);
 
 	// Free memory
