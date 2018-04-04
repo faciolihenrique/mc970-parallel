@@ -132,6 +132,7 @@ void run(md5bench_t* args) {
         uint8_t* out = args->out;
 
         while(buffers_to_process > 0) {
+			
             process(in[next], out+next*DIGEST_SIZE, args->size);
             next++;
             buffers_to_process--;
@@ -161,7 +162,7 @@ int finalize(md5bench_t* args) {
         }
         buffer[32] = '\0';
 
-#ifdef DEBUG            
+#ifdef DEBUG
         fwrite(buffer, sizeof(char), 32, stdout);
         fputc('\n', stdout);
 #else
@@ -209,7 +210,7 @@ int main(int argc, char** argv) {
     md5bench_t args;
 
     //nt = number of threads
-    int nt; 
+    int nt;
 
 
     //Receber parâmetros

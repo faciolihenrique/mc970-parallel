@@ -109,38 +109,22 @@ static void *body(MD5_CTX *ctx, void *data, unsigned long size)
 		saved_d = d;
 
 /* Round 1 */
-		#pragma omp task in(b,c,d) out(a)
-		{STEP(F, a, b, c, d, SET(0), 0xd76aa478, 7)}
-		#pragma omp task in(a,b,c) out(d)
-		{STEP(F, d, a, b, c, SET(1), 0xe8c7b756, 12)}
-		#pragma omp task in(a,b,d) out(c)
-		{STEP(F, c, d, a, b, SET(2), 0x242070db, 17)}
-		#pragma omp task in(a,c,d) out(b)
-		{STEP(F, b, c, d, a, SET(3), 0xc1bdceee, 22)}
-		#pragma omp task in(b,c,d) out(a)
-		{STEP(F, a, b, c, d, SET(4), 0xf57c0faf, 7)}
-		#pragma omp task in(a,b,c) out(d)
-		{STEP(F, d, a, b, c, SET(5), 0x4787c62a, 12)}
-		#pragma omp task in(a,b,d) out(c)
-		{STEP(F, c, d, a, b, SET(6), 0xa8304613, 17)}
-		#pragma omp task in(a,c,d) out(b)
-		{STEP(F, b, c, d, a, SET(7), 0xfd469501, 22)}
-		#pragma omp task in(b,c,d) out(a)
-		{STEP(F, a, b, c, d, SET(8), 0x698098d8, 7)}
-		#pragma omp task in(a,b,c) out(d)
-		{STEP(F, d, a, b, c, SET(9), 0x8b44f7af, 12)}
-		#pragma omp task in(a,b,d) out(c)
-		{STEP(F, c, d, a, b, SET(10), 0xffff5bb1, 17)}
-		#pragma omp task in(a,c,d) out(b)
-		{STEP(F, b, c, d, a, SET(11), 0x895cd7be, 22)}
-		#pragma omp task in(b,c,d) out(a)
-		{STEP(F, a, b, c, d, SET(12), 0x6b901122, 7)}
-		#pragma omp task in(a,b,c) out(d)
-		{STEP(F, d, a, b, c, SET(13), 0xfd987193, 12)}
-		#pragma omp task in(a,b,d) out(c)
-		{STEP(F, c, d, a, b, SET(14), 0xa679438e, 17)}
-		#pragma omp task in(a,c,d) out(b)
-		{STEP(F, b, c, d, a, SET(15), 0x49b40821, 22)}
+		STEP(F, a, b, c, d, SET(0), 0xd76aa478, 7)
+		STEP(F, d, a, b, c, SET(1), 0xe8c7b756, 12)
+		STEP(F, c, d, a, b, SET(2), 0x242070db, 17)
+		STEP(F, b, c, d, a, SET(3), 0xc1bdceee, 22)
+		STEP(F, a, b, c, d, SET(4), 0xf57c0faf, 7)
+		STEP(F, d, a, b, c, SET(5), 0x4787c62a, 12)
+		STEP(F, c, d, a, b, SET(6), 0xa8304613, 17)
+		STEP(F, b, c, d, a, SET(7), 0xfd469501, 22)
+		STEP(F, a, b, c, d, SET(8), 0x698098d8, 7)
+		STEP(F, d, a, b, c, SET(9), 0x8b44f7af, 12)
+		STEP(F, c, d, a, b, SET(10), 0xffff5bb1, 17)
+		STEP(F, b, c, d, a, SET(11), 0x895cd7be, 22)
+		STEP(F, a, b, c, d, SET(12), 0x6b901122, 7)
+		STEP(F, d, a, b, c, SET(13), 0xfd987193, 12)
+		STEP(F, c, d, a, b, SET(14), 0xa679438e, 17)
+		STEP(F, b, c, d, a, SET(15), 0x49b40821, 22)
 
 /* Round 2 */
 		STEP(G, a, b, c, d, GET(1), 0xf61e2562, 5)
