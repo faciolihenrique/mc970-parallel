@@ -130,10 +130,9 @@ void run(md5bench_t* args) {
         int next = 0;
         uint8_t** in = args->inputs;
         uint8_t* out = args->out;
-
         while(buffers_to_process > 0) {
-			
-            process(in[next], out+next*DIGEST_SIZE, args->size);
+            uint8_t* aux = out+next*DIGEST_SIZE;
+            process(in[next], aux, args->size);
             next++;
             buffers_to_process--;
         }
