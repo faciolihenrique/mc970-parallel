@@ -8,7 +8,7 @@
 #include <sys/time.h>
 #include <math.h>
 #define MASK_WIDTH 5
-#define CUDA_GRID 32
+#define CUDA_GRID 16
 
 #define COMMENT "Histogram_GPU"
 #define RGB_COMPONENT_COLOR 255
@@ -113,97 +113,179 @@ void writePPM(PPMImage *img) {
     fclose(stdout);
 }
 
-void Smoothing_CPU_Serial(PPMImage *image, PPMImage *image_copy) {
-    int i, j, y, x;
-    int total_red, total_blue, total_green;
-    
-    for (i = 0; i < image->y; i++) {
-        for (j = 0; j < image->x; j++) {
-            total_red = total_blue = total_green = 0;
-            for (y = i - ((MASK_WIDTH-1)/2); y <= (i + ((MASK_WIDTH-1)/2)); y++) {
-                for (x = j - ((MASK_WIDTH-1)/2); x <= (j + ((MASK_WIDTH-1)/2)); x++) {
-                    if (x >= 0 && y >= 0 && y < image->y && x < image->x) {
-                        total_red += image_copy->data[(y * image->x) + x].red;
-                        total_blue += image_copy->data[(y * image->x) + x].blue;
-                        total_green += image_copy->data[(y * image->x) + x].green;
-                    } //if
-                } //for z
-            } //for y
-            image->data[(i * image->x) + j].red = total_red / (MASK_WIDTH*MASK_WIDTH);
-            image->data[(i * image->x) + j].blue = total_blue / (MASK_WIDTH*MASK_WIDTH);
-            image->data[(i * image->x) + j].green = total_green / (MASK_WIDTH*MASK_WIDTH);
-        }
-    }
-}
-
 __global__ void smoothing(PPMPixel *image, PPMPixel *image_copy, int img_x, int img_y) {
     int x, y;
     int p_x = threadIdx.x + blockDim.x * blockIdx.x;
     int p_y = threadIdx.y + blockDim.y * blockIdx.y;
 
-    __shared__ PPMPixel img_shrd[blockDim.x+MASK_WIDTH][blockDim.y+MASK_WIDTH]
-    if ((threadIdx.x > 0 && threadIdx.x < CUDA_GRID - 1) ||
-        (threadIdx.y > 0 && threadIdx.y < CUDA_GRID - 1)
-    ) {
-        // All elements except the borders
-        int shared_x = threadIdx.x+(MASK_WIDTH-1)/2;
-        int shread_y = threadIdx.y+ (MASK_WIDTH-1)/2;
-        img_shrd[shared_x][shread_y] = image[(p_y * img_x) + p_x];
-    } else if (threadIdx.x == 0 && threadIdx.y == 0) {
-        // Top-Left position
-    } else if (threadIdx.x == CUDA_GRID - 1 && threadIdx.y == 0) {
-        // Top-Right position
-    } else if (threadIdx.x == 0 && threadIdx.y == CUDA_GRID - 1) {
-        // Botton-Left position
-    } else if (threadIdx.x == 0 && threadIdx.y == 0) {
-        // Botton-Right position
-    } else if (threadIdx.x == 0) {
-        // First Column
-        for (int local_x = p_x - (MASK_WIDTH-1)/2; local_x <= p_x; local_x++) {
-            int shared_x = i + (MASK_WIDTH-1)/2 - p_x;
-            int shared_y = threadIdx.y;
-            int global_unique_value = (p_y * img_x) + local_x;
-            if (global_unique_value >= 0 && global_unique_value < img_x) {
-                img_shrd[shared_x][shared_y] = image_copy[global_unique_value];
-            }
-        }
-    } else if (threadIdx.x == CUDA_GRID - 1) {
-        // Last Column
-        for (int local_x = p_x; local_x <= p_x + (MASK_WIDTH - 1)/2; local_x++){
-            int shared_x = (CUDA_GRID - 1) + (local_x - p_x);
-            int shared_y = threadIdx.y;
-            int global_unique_value = (p_y * img_x) + local_x;
-            if (global_unique_value >= 0 && global_unique_value < img_x) {
-                img_shrd[shared_x][shared_y] = image_copy[global_unique_value];
-            }
-        }
-    } else if (threadIdx.y == 0) {
-        // First Line
-        for (int local_y = p_x; local_y <= p_x + (MASK_WIDTH - 1)/2; local_y++){
-            int shared_x = threadIdx.x;
-            int shared_y = i + (MASK_WIDTH-1)/2 - p_y;
-            int global_unique_value = (local_y * img_x) + p_x;
-            if (global_unique_value >= 0 && global_unique_value < img_y) {
-                img_shrd[shared_x][shared_y] = image_copy[global_unique_value];
-            }
-        }
-    } else if (threadIdx.x == 0) {
-        // Last Line
-    }
-    
-    __syncthreads();
-    
     // Guarantee no memory access error
     if (p_x >= img_x || p_y >= img_y)
         return;
 
+    __shared__ PPMPixel img_shrd[CUDA_GRID+MASK_WIDTH-1][CUDA_GRID+MASK_WIDTH-1];
+
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        // Top-Left position
+        for (int local_x = p_x - (MASK_WIDTH-1)/2; local_x <= p_x; local_x++) {
+            for (int local_y = p_y-(MASK_WIDTH-1)/2; local_y <= p_y; local_y++) {
+                int shared_x = local_x + (MASK_WIDTH-1)/2 - p_x;
+                int shared_y = local_y + (MASK_WIDTH-1)/2 - p_y;
+                int global_unique_value = (local_y * img_x) + local_x;
+
+                if (local_x >= 0 && local_x < img_x && local_y >= 0 && local_y < img_y) {
+                    img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                    img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                    img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+                } else {
+                    img_shrd[shared_x][shared_y].red = 0;
+                    img_shrd[shared_x][shared_y].green = 0;
+                    img_shrd[shared_x][shared_y].blue = 0;
+                }
+            } 
+        }
+
+    } else if (threadIdx.x == CUDA_GRID - 1 && threadIdx.y == 0) {
+        // Top-Right position
+        for (int local_x = p_x; local_x <= p_x + (MASK_WIDTH - 1)/2; local_x++) {
+            for (int local_y = p_y-(MASK_WIDTH-1)/2; local_y <= p_y; local_y++) {
+                int shared_x = (MASK_WIDTH-1)/2 + (CUDA_GRID - 1) + (local_x - p_x);
+                int shared_y = local_y + (MASK_WIDTH-1)/2 - p_y;
+                int global_unique_value = (local_y * img_x) + local_x;
+
+                if (local_x >= 0 && local_x < img_x && local_y >= 0 && local_y < img_y) {
+                    img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                    img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                    img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+                } else {
+                    img_shrd[shared_x][shared_y].red = 0;
+                    img_shrd[shared_x][shared_y].green = 0;
+                    img_shrd[shared_x][shared_y].blue = 0;
+                }
+            }
+        }
+    } else if (threadIdx.x == 0 && threadIdx.y == CUDA_GRID - 1) {
+        // Botton-Left position
+        for (int local_x = p_x - (MASK_WIDTH-1)/2; local_x <= p_x; local_x++) {
+            for (int local_y = p_y; local_y <= p_y + (MASK_WIDTH - 1)/2; local_y++) {
+                int shared_x = local_x + (MASK_WIDTH-1)/2 - p_x;
+                int shared_y = (MASK_WIDTH-1)/2 + (CUDA_GRID - 1) + (local_y - p_y);
+                int global_unique_value = (local_y * img_x) + local_x;
+
+                if (local_x >= 0 && local_x < img_x && local_y >= 0 && local_y < img_y) {
+                    img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                    img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                    img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+                } else {
+                    img_shrd[shared_x][shared_y].red = 0;
+                    img_shrd[shared_x][shared_y].green = 0;
+                    img_shrd[shared_x][shared_y].blue = 0;
+                }
+            }
+        }
+    
+    } else if (threadIdx.x == CUDA_GRID - 1 && threadIdx.y == CUDA_GRID - 1) {
+        // Botton-Right position
+        for (int local_x = p_x; local_x <= p_x + (MASK_WIDTH - 1)/2; local_x++) {
+            for (int local_y = p_y; local_y <= p_y + (MASK_WIDTH - 1)/2; local_y++) {
+                int shared_x = (MASK_WIDTH-1)/2 + (CUDA_GRID - 1) + (local_x - p_x);
+                int shared_y = (MASK_WIDTH-1)/2 + (CUDA_GRID - 1) + (local_y - p_y);
+                int global_unique_value = (local_y * img_x) + local_x;
+
+                if (local_x >= 0 && local_x < img_x && local_y >= 0 && local_y < img_y) {
+                    img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                    img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                    img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+                } else {
+                    img_shrd[shared_x][shared_y].red = 0;
+                    img_shrd[shared_x][shared_y].green = 0;
+                    img_shrd[shared_x][shared_y].blue = 0;
+                }
+            }
+        }
+
+    } else if (threadIdx.x == 0) {
+        // First Column
+        for (int local_x = p_x - (MASK_WIDTH-1)/2; local_x <= p_x; local_x++) {
+            int shared_x = local_x + (MASK_WIDTH-1)/2 - p_x;
+            int shared_y = (MASK_WIDTH-1)/2  + threadIdx.y;
+            int global_unique_value = (p_y * img_x) + local_x;
+            // printf("Estive 1 %d %d\n", img_x, global_unique_value);
+            if (local_x >= 0 && local_x < img_x) {
+                img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+            } else {
+                img_shrd[shared_x][shared_y].red = 0;
+                img_shrd[shared_x][shared_y].green = 0;
+                img_shrd[shared_x][shared_y].blue = 0;
+            }
+        }
+    } else if (threadIdx.x == CUDA_GRID - 1) {
+        // Last Column
+        for (int local_x = p_x; local_x <= p_x + (MASK_WIDTH - 1)/2; local_x++) {
+            int shared_x = (MASK_WIDTH-1)/2 + (CUDA_GRID - 1) + (local_x - p_x);
+            int shared_y = (MASK_WIDTH-1)/2  + threadIdx.y;
+            int global_unique_value = (p_y * img_x) + local_x;
+            if (local_x >= 0 && local_x < img_x) {
+                img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+            } else {
+                img_shrd[shared_x][shared_y].red = 0;
+                img_shrd[shared_x][shared_y].green = 0;
+                img_shrd[shared_x][shared_y].blue = 0;
+            }
+        }
+    } else if (threadIdx.y == 0) {
+        // First Line
+        for (int local_y = p_y-(MASK_WIDTH-1)/2; local_y <= p_y; local_y++) {
+            int shared_x = (MASK_WIDTH-1)/2 + threadIdx.x;
+            int shared_y = local_y + (MASK_WIDTH-1)/2 - p_y;
+            int global_unique_value = (local_y * img_x) + p_x;
+            if (local_y >= 0 && local_y < img_y) {
+                img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+            } else {
+                img_shrd[shared_x][shared_y].red = 0;
+                img_shrd[shared_x][shared_y].green = 0;
+                img_shrd[shared_x][shared_y].blue = 0;
+            }
+        }
+    } else if (threadIdx.y == CUDA_GRID - 1) {
+        // Last Line
+        for (int local_y = p_y; local_y <= p_y + (MASK_WIDTH - 1)/2; local_y++) {
+            int shared_x = (MASK_WIDTH-1)/2 + threadIdx.x;
+            int shared_y = (MASK_WIDTH-1)/2 + (CUDA_GRID - 1) + (local_y - p_y);
+            int global_unique_value = (local_y * img_x) + p_x;
+            if (local_y >= 0 && local_y < img_y) {
+                img_shrd[shared_x][shared_y].red = image_copy[global_unique_value].red;
+                img_shrd[shared_x][shared_y].green = image_copy[global_unique_value].green;
+                img_shrd[shared_x][shared_y].blue = image_copy[global_unique_value].blue;
+            } else {
+                img_shrd[shared_x][shared_y].red = 0;
+                img_shrd[shared_x][shared_y].green = 0;
+                img_shrd[shared_x][shared_y].blue = 0;
+            }
+        }
+    } else {
+        // All elements except the borders
+        int shared_x = threadIdx.x+(MASK_WIDTH-1)/2;
+        int shread_y = threadIdx.y+ (MASK_WIDTH-1)/2;
+        img_shrd[shared_x][shread_y].red = image_copy[(p_y * img_x) + p_x].red;
+        img_shrd[shared_x][shread_y].green = image_copy[(p_y * img_x) + p_x].green;
+        img_shrd[shared_x][shread_y].blue = image_copy[(p_y * img_x) + p_x].blue;
+    }
+    
+    __syncthreads();
+
     int total_red = 0 , total_blue = 0, total_green = 0;
-    for (y = p_y - ((MASK_WIDTH-1)/2); y <= (p_y + ((MASK_WIDTH-1)/2)); y++) {
-        for (x = p_x - ((MASK_WIDTH-1)/2); x <= (p_x + ((MASK_WIDTH-1)/2)); x++) {
-            if (x >= 0 && y >= 0 && y < img_y && x < img_x) {
-                total_red += image_copy[(y * img_x) + x].red;
-                total_blue += image_copy[(y * img_x) + x].blue;
-                total_green += image_copy[(y * img_x) + x].green;
+    for (y = threadIdx.y; y <= threadIdx.y + MASK_WIDTH-1; y++) {
+        for (x = threadIdx.x; x <= threadIdx.x + MASK_WIDTH-1; x++) {
+            if (x >= 0 && y >= 0 && y < CUDA_GRID+MASK_WIDTH && x < CUDA_GRID+MASK_WIDTH) {
+                total_red += img_shrd[x][y].red;
+                total_blue += img_shrd[x][y].blue;
+                total_green += img_shrd[x][y].green;
             } //if
         } //for z
     } //for y
@@ -218,8 +300,7 @@ int main(int argc, char *argv[]) {
         printf("Too many or no one arguments supplied.\n");
     }
 
-    // double t_start, t_end;
-    // int i;
+    double t_start, t_end;
     char *filename = argv[1]; //Recebendo o arquivo!;
 
     PPMImage *image = readPPM(filename);
@@ -230,29 +311,31 @@ int main(int argc, char *argv[]) {
     PPMPixel *d_image ,*d_image_output, *img_out;
 
     // Malloc
+    
     img_out = (PPMPixel *)calloc(n, sizeof(PPMPixel));
+    t_start = rtclock();
     cudaMalloc((void **) &d_image, sizeof(PPMPixel) * n);
     cudaMalloc((void **) &d_image_output, sizeof(PPMPixel) * n);
 
     // Copy
     cudaMemcpy(d_image, image->data, sizeof(PPMPixel)*n, cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_image_output, image_output->data, sizeof(PPMPixel)*n, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_image_output, image_output->data, sizeof(PPMPixel)*n, cudaMemcpyHostToDevice);    
 
-    int nrow = ceil(image->x / CUDA_GRID);    // Create the total number of blocs necessary
-    int nlin = ceil(image->y / CUDA_GRID);    // to iterate through matrix of size 32
-    dim3 gridDim(nrow, nlin);          // Now, iterate on a grid at most 32x32
-    dim3 blockDim(CUDA_GRID, CUDA_GRID);             //  32 x 32 x 1 (1024)
+    int nrow = ceil((double) image->x / CUDA_GRID);    // Create the total number of blocs necessary
+    int nlin = ceil((double) image->y / CUDA_GRID);    // to iterate through matrix of size 32
+    dim3 gridDim(nrow, nlin);                          // Now, iterate on a grid at most 32x32
+    dim3 blockDim(CUDA_GRID, CUDA_GRID);               //  32 x 32 x 1 (1024)
 
-    t_start = rtclock();
     smoothing<<<gridDim, blockDim>>>(d_image_output, d_image, image->x, image->y);
-    t_end = rtclock();
+    cudaDeviceSynchronize();
 
     cudaMemcpy(img_out, d_image_output, sizeof(PPMPixel) * n, cudaMemcpyDeviceToHost); 
+    t_end = rtclock();
     image_output->data = img_out;
+    fprintf(stdout, "%0.6lf\n", t_end - t_start);  
 
     writePPM(image_output);
 
-    //fprintf(stdout, "\n%0.6lfs\n", t_end - t_start);  
     free(image);
     free(image_output);
 }

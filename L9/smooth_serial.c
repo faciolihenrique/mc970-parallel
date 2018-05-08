@@ -147,10 +147,10 @@ int main(int argc, char *argv[]) {
     t_start = rtclock();
     Smoothing_CPU_Serial(image_output, image);
     t_end = rtclock();
+    fprintf(stdout, "\n\n%0.6lf\n\n", t_end - t_start);
 
     writePPM(image_output);
 
-    //fprintf(stdout, "\n%0.6lfs\n", t_end - t_start);  
     free(image);
     free(image_output);
 }
